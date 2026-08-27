@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "code-server Discord Presence",
+  "version": "0.1.0",
+  "description": "Publishes privacy-aware code-server activity to Discord without native software.",
+  "minimum_chrome_version": "106",
+  "icons": {
+    "16": "assets/icons/extension-16.png",
+    "32": "assets/icons/extension-32.png",
+    "48": "assets/icons/extension-48.png",
+    "96": "assets/icons/extension-96.png",
+    "128": "assets/icons/extension-128.png"
+  },
+  "permissions": [
+    "activeTab",
+    "alarms",
+    "identity",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://discord.com/api/*",
+    "https://discord.com/oauth2/*"
+  ],
+  "optional_host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "src/background-chromium.js"
+  },
+  "action": {
+    "default_title": "code-server Discord Presence",
+    "default_popup": "src/popup.html",
+    "default_icon": {
+      "16": "assets/icons/extension-16.png",
+      "32": "assets/icons/extension-32.png"
+    }
+  }
+}

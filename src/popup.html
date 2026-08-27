@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>code-server Discord Presence</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="brand">
+          <img src="../assets/icons/extension-32.png" width="32" height="32" alt="">
+          <div>
+            <h1>code-server Presence</h1>
+            <p class="subtitle">Browser → Discord headless session</p>
+          </div>
+        </div>
+        <label class="switch" title="Enable presence">
+          <input id="enabled" type="checkbox">
+          <span></span>
+        </label>
+      </header>
+
+      <section class="status-card">
+        <div class="status-line">
+          <span id="statusDot" class="dot"></span>
+          <strong id="statusText">Loading…</strong>
+        </div>
+        <p id="presenceDetails">No activity</p>
+        <p id="presenceState" class="muted"></p>
+      </section>
+
+      <section>
+        <h2>Discord application</h2>
+        <label for="clientId">Application ID</label>
+        <div class="row">
+          <input id="clientId" inputmode="numeric" autocomplete="off" placeholder="123456789012345678">
+          <button id="saveClientId" type="button" class="secondary">Save</button>
+        </div>
+        <label for="redirectUri">OAuth redirect URI</label>
+        <div class="row">
+          <input id="redirectUri" type="text" readonly>
+          <button id="copyRedirect" type="button" class="secondary">Copy</button>
+        </div>
+        <div class="actions">
+          <button id="connect" type="button">Connect Discord</button>
+          <button id="disconnect" type="button" class="danger">Disconnect</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>code-server URL</h2>
+        <label for="codeServerUrl">Your code-server address</label>
+        <div class="row">
+          <input id="codeServerUrl" type="url" autocomplete="off" placeholder="https://code.example.com">
+          <button id="saveCodeServerUrl" type="button">Save URL</button>
+        </div>
+        <button id="clearCodeServerUrl" type="button" class="secondary full">Clear configured URL</button>
+        <p class="hint">Blank by default. Saving requests access only to that URL's origin.</p>
+
+        <label>Current browser site</label>
+        <p id="siteOrigin" class="mono muted">Open a code-server tab first.</p>
+        <div class="actions">
+          <button id="enableSite" type="button">Enable current site</button>
+          <button id="disableSite" type="button" class="secondary">Disable current site</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Program identity</h2>
+        <label for="programPreset">Activity title</label>
+        <select id="programPreset">
+          <option value="visual-studio-code">Visual Studio Code</option>
+          <option value="vscodium">VSCodium</option>
+          <option value="code-oss">Code - OSS</option>
+          <option value="code-server">code-server</option>
+          <option value="cursor">Cursor</option>
+          <option value="antigravity">Antigravity</option>
+          <option value="custom">Custom name…</option>
+        </select>
+        <div id="customProgramNameFields" hidden>
+          <label for="customProgramName">Custom program name</label>
+          <input id="customProgramName" type="text" maxlength="128" autocomplete="off" placeholder="My IDE">
+        </div>
+
+        <label for="programIconMode">Small circular program icon</label>
+        <select id="programIconMode">
+          <option value="auto">Automatic for title</option>
+          <option value="vscode">VS Code</option>
+          <option value="vscodium">VSCodium</option>
+          <option value="cursor">Cursor</option>
+          <option value="antigravity">Antigravity</option>
+          <option value="custom-url">Custom HTTPS image URL…</option>
+        </select>
+        <div id="customProgramIconFields" hidden>
+          <label for="customProgramIconUrl">Public HTTPS image URL</label>
+          <input id="customProgramIconUrl" type="url" maxlength="2048" autocomplete="off" placeholder="https://example.com/my-ide.png">
+        </div>
+        <button id="saveProgram" type="button" class="secondary full">Save program identity</button>
+        <p id="programPreview" class="hint"></p>
+      </section>
+
+      <section>
+        <h2>Custom Text</h2>
+        <label for="detailsTemplate">Details template</label>
+        <input id="detailsTemplate" type="text" maxlength="256" autocomplete="off" placeholder="Editing {file_name}{file_extension} at line {line_number}">
+        <label for="stateTemplate">State template</label>
+        <input id="stateTemplate" type="text" maxlength="256" autocomplete="off" placeholder="In {workspace}">
+        <button id="saveTemplates" type="button" class="secondary full">Save custom text</button>
+        <p class="hint template-help">
+          Variables: <code>{file_name}</code> <code>{file_extension}</code>
+          <code>{language}</code> <code>{workspace}</code> <code>{line_number}</code>
+          <code>{column_number}</code> <code>{program_name}</code>. Blank uses defaults.
+        </p>
+      </section>
+
+      <section>
+        <h2>Privacy</h2>
+        <label class="check">
+          <input id="privacyMode" type="checkbox">
+          <span>Privacy Mode</span>
+        </label>
+        <p class="hint">In templates, filename becomes <code>file</code> and workspace becomes <code>Workspace</code>.</p>
+        <label class="check normal-only">
+          <input id="showFileName" type="checkbox">
+          <span>Show filename in normal mode</span>
+        </label>
+        <label class="check normal-only">
+          <input id="showWorkspace" type="checkbox">
+          <span>Show workspace in normal mode</span>
+        </label>
+      </section>
+
+      <form id="callbackForm" class="callback">
+        <h2>Finish OAuth callback</h2>
+        <p class="hint">Paste the failed OAuth callback URL.</p>
+        <input id="callbackUrl" type="url" autocomplete="off" placeholder="https://…/discord?code=…">
+        <button type="submit">Finish connection</button>
+      </form>
+
+      <p id="error" role="alert"></p>
+      <button id="clearPresence" class="secondary full" type="button">Clear current presence</button>
+      <p class="legal">Settings are saved locally. No native binary, IPC, Native Messaging, or localhost server.</p>
+    </main>
+    <script src="shared/browser-compat.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

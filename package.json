@@ -1,0 +1,18 @@
+{
+  "name": "code-server-discord-presence-browser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Firefox and Chromium code-server Discord Rich Presence using OAuth PKCE and headless sessions.",
+  "license": "MIT",
+  "type": "commonjs",
+  "scripts": {
+    "check": "node scripts/check.js",
+    "test": "node --test",
+    "build": "node scripts/build.js",
+    "build:firefox": "node scripts/build.js firefox",
+    "build:chromium": "node scripts/build.js chromium",
+    "package": "node scripts/package.js",
+    "verify": "npm run check && npm test && npm run package"
+  },
+  "engines": { "node": ">=18" }
+}
