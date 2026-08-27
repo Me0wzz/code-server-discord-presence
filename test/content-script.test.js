@@ -13,7 +13,7 @@ test("presence observation does not require page focus", () => {
 });
 
 test("content script has a versioned reinjection guard and broad editor markers", () => {
-  assert.equal(source.includes('const SCRIPT_VERSION = "0.1.0"'), true);
+  assert.equal(source.includes('const SCRIPT_VERSION = "0.1.1"'), true);
   assert.equal(source.includes('document.querySelector(".part.editor")'), true);
   assert.equal(source.includes('document.querySelector(".editor-group-container")'), true);
 });

@@ -47,6 +47,7 @@ let runtimeState = { ...DEFAULT_RUNTIME };
 let authTokens = null;
 let primaryHeadlessToken = "";
 let knownHeadlessTokens = [];
+let pendingDeletionTokens = [];
 let sessionStartedAt = Date.now();
 let currentPresence = null;
 let activeCodeServerTabId = null;
@@ -163,8 +164,79 @@ async function saveAuthTokens() {
 
 async function saveHeadlessSession() {
   await browser.storage.local.set({
-    headlessSession: { primaryHeadlessToken, knownHeadlessTokens, sessionStartedAt }
+    headlessSession: {
+      primaryHeadlessToken, knownHeadlessTokens, pendingDeletionTokens, sessionStartedAt
+    }
   });
+}
+
+function storedPresence(presence) {
+  if (!presence) return null;
+  const stored = {
+    details: CodeServerPresence.cleanText(presence.details),
+    state: CodeServerPresence.cleanText(presence.state),
+    iconKey: CodeServerLanguageNames.isKnownIconKey(presence.iconKey) ? presence.iconKey : "text",
+    privacyMode: Boolean(presence.privacyMode),
+    updatedAt: Number(presence.updatedAt || Date.now())
+  };
+  if (stored.privacyMode) stored.safeContext = presence.safeContext || null;
+  return stored;
+}
+
+async function savePresenceTracking() {
+  const tabId = Number.isInteger(activeCodeServerTabId)
+    ? activeCodeServerTabId
+    : currentPresence?.tabId;
+  const presence = storedPresence(currentPresence);
+  if (!Number.isInteger(tabId) || !presence) {
+    await browser.storage.session.remove("presenceTracking");
+    return;
+  }
+  await browser.storage.session.set({ presenceTracking: { tabId, presence } });
+}
+
+function restorePresenceTracking(tracking) {
+  const tabId = Number(tracking?.tabId);
+  const source = tracking?.presence;
+  if (!Number.isInteger(tabId) || tabId < 0 || !source) return null;
+  const presence = {
+    details: CodeServerPresence.cleanText(source.details),
+    state: CodeServerPresence.cleanText(source.state),
+    iconKey: CodeServerLanguageNames.isKnownIconKey(source.iconKey) ? source.iconKey : "text",
+    privacyMode: Boolean(source.privacyMode),
+    safeContext: source.safeContext || null,
+    tabId,
+    updatedAt: Number(source.updatedAt || Date.now())
+  };
+  if (presence.privacyMode !== settings.privacyMode) return null;
+  if (presence.privacyMode && !CodeServerPresence.isPrivacySafePresence(
+    presence, contentPresentationSettings()
+  )) return null;
+  presence.key = JSON.stringify({
+    details: presence.details,
+    state: presence.state,
+    iconKey: presence.iconKey,
+    privacyMode: presence.privacyMode
+  });
+  return Object.freeze(presence);
+}
+
+async function reconcilePresenceTracking() {
+  if (!currentPresence || !Number.isInteger(activeCodeServerTabId)) {
+    await clearPresence();
+    return false;
+  }
+  const tab = await browser.tabs.get(activeCodeServerTabId).catch(() => null);
+  const hasPermission = tab && isAllowedUrl(tab.url)
+    ? await browser.permissions.contains({
+      origins: [permissionPattern(originFromUrl(tab.url))]
+    }).catch(() => false)
+    : false;
+  if (!hasPermission) {
+    await clearPresence();
+    return false;
+  }
+  return true;
 }
 
 async function setError(error) {
@@ -177,8 +249,9 @@ async function setError(error) {
 }
 
 async function initialize() {
-  const stored = await browser.storage.local.get([
-    "settings", "runtimeState", "authTokens", "headlessSession"
+  const [stored, sessionStored] = await Promise.all([
+    browser.storage.local.get(["settings", "runtimeState", "authTokens", "headlessSession"]),
+    browser.storage.session.get("presenceTracking")
   ]);
   settings = { ...DEFAULT_SETTINGS, ...(stored.settings || {}) };
   settings = { ...settings, ...normalizeProgramSettings(settings) };
@@ -193,11 +266,15 @@ async function initialize() {
   primaryHeadlessToken = stored.headlessSession?.primaryHeadlessToken || "";
   knownHeadlessTokens = stored.headlessSession?.knownHeadlessTokens ||
     (primaryHeadlessToken ? [primaryHeadlessToken] : []);
+  pendingDeletionTokens = stored.headlessSession?.pendingDeletionTokens || [];
   sessionStartedAt = stored.headlessSession?.sessionStartedAt || Date.now();
+  currentPresence = restorePresenceTracking(sessionStored.presenceTracking);
+  activeCodeServerTabId = currentPresence?.tabId ?? null;
   runtimeState.authenticated = Boolean(authTokens?.accessToken);
   runtimeState.connected = Boolean(primaryHeadlessToken && authTokens?.accessToken);
   browser.alarms.create(SESSION_REFRESH_ALARM, { periodInMinutes: SESSION_REFRESH_MINUTES });
   await Promise.all([saveSettings(), saveRuntime(), saveHeadlessSession()]);
+  await reconcilePresenceTracking();
   setTimeout(() => restoreSavedSites().catch(setError), 0);
 }
 
@@ -316,6 +393,7 @@ async function rememberHeadlessToken(token) {
   if (!token) return;
   primaryHeadlessToken = token;
   knownHeadlessTokens = Array.from(new Set([...knownHeadlessTokens, token])).slice(-8);
+  pendingDeletionTokens = pendingDeletionTokens.filter((item) => item !== token);
   await saveHeadlessSession();
 }
 
@@ -364,24 +442,39 @@ function queuePresence(presence, force = false) {
 
 async function deleteKnownHeadlessSessions() {
   return enqueue(async () => {
-    const tokens = Array.from(new Set([primaryHeadlessToken, ...knownHeadlessTokens].filter(Boolean)));
+    const tokens = Array.from(new Set([
+      primaryHeadlessToken, ...knownHeadlessTokens, ...pendingDeletionTokens
+    ].filter(Boolean)));
     primaryHeadlessToken = "";
     knownHeadlessTokens = [];
+    pendingDeletionTokens = tokens;
     lastPresenceKey = "";
     lastPresenceSentAt = 0;
     await saveHeadlessSession();
     if (!authTokens?.accessToken || !tokens.length) return;
-    await Promise.allSettled(tokens.map((token) =>
-      discordRequest("/users/@me/headless-sessions/delete", {
-        method: "POST",
-        body: JSON.stringify({ token })
-      })
-    ));
+    const outcomes = await Promise.all(tokens.map(async (token) => {
+      try {
+        await discordRequest("/users/@me/headless-sessions/delete", {
+          method: "POST",
+          body: JSON.stringify({ token })
+        });
+        return null;
+      } catch (error) {
+        if (error instanceof DiscordRequestError && [400, 404].includes(error.status)) return null;
+        return token;
+      }
+    }));
+    pendingDeletionTokens = outcomes.filter(Boolean);
+    await saveHeadlessSession();
   });
 }
 
 async function clearPresence({ forgetContext = true } = {}) {
-  if (forgetContext) currentPresence = null;
+  if (forgetContext) {
+    currentPresence = null;
+    activeCodeServerTabId = null;
+    await savePresenceTracking();
+  }
   await deleteKnownHeadlessSessions();
   runtimeState = { ...runtimeState, connected: false, lastError: "" };
   await saveRuntime();
@@ -520,6 +613,7 @@ async function handleEditorPresence(message, sender) {
     state: CodeServerPresence.cleanText(presence.state),
     iconKey,
     privacyMode: Boolean(presence.privacyMode),
+    safeContext: presence.privacyMode ? presence.safeContext : null,
     key: JSON.stringify({
       details: CodeServerPresence.cleanText(presence.details),
       state: CodeServerPresence.cleanText(presence.state),
@@ -530,6 +624,7 @@ async function handleEditorPresence(message, sender) {
     updatedAt: Number(message.observedAt || Date.now())
   });
   activeCodeServerTabId = tab.id;
+  await savePresenceTracking();
   if (settings.enabled && authTokens?.accessToken) await queuePresence(currentPresence);
   return { ok: true };
 }
@@ -696,12 +791,20 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 });
 
 browser.tabs.onRemoved.addListener((tabId) => {
-  if (activeCodeServerTabId !== tabId) return;
   initialized.then(async () => {
-    activeCodeServerTabId = null;
+    if (activeCodeServerTabId !== tabId && currentPresence?.tabId !== tabId) return;
     await clearPresence();
   }).catch(setError);
 });
+
+if (browser.windows?.onRemoved) {
+  browser.windows.onRemoved.addListener(() => {
+    initialized.then(async () => {
+      const windows = await browser.windows.getAll({ windowTypes: ["normal"] }).catch(() => null);
+      if (Array.isArray(windows) && windows.length === 0) await clearPresence();
+    }).catch(setError);
+  });
+}
 
 browser.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== SESSION_REFRESH_ALARM) return;

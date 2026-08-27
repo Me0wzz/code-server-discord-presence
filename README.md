@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <img alt="Version 0.1.0" src="https://img.shields.io/badge/version-0.1.0-5865F2">
-  <a href="https://addons.mozilla.org/ko/firefox/addon/code-server-discord-presence/"><img alt="Install for Firefox" src="https://img.shields.io/badge/Firefox-install-FF7139?logo=firefoxbrowser&logoColor=white"></a>
+  <img alt="Version 0.1.1" src="https://img.shields.io/badge/version-0.1.1-5865F2">
+  <a href="https://addons.mozilla.org/ko/firefox/addon/code-server-discord-presence/"><img alt="Firefox AMO review pending" src="https://img.shields.io/badge/Firefox-AMO_review_pending-FF7139?logo=firefoxbrowser&logoColor=white"></a>
   <img alt="Chromium" src="https://img.shields.io/badge/Chromium-supported-4285F4?logo=googlechrome&logoColor=white">
   <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-22c55e">
 </p>
@@ -50,10 +50,10 @@ There is no Discord desktop dependency and no native bridge.
 
 | Browser | Manifest | Install |
 | --- | --- | --- |
-| Firefox 142+ | MV2 | [Firefox Add-ons](https://addons.mozilla.org/ko/firefox/addon/code-server-discord-presence/) |
+| Firefox 142+ | MV2 | [AMO review pending](https://addons.mozilla.org/ko/firefox/addon/code-server-discord-presence/) |
 | Chrome, Chromium, Edge 106+ | MV3 | Load `dist/chromium/` manually |
 
-<sub>The Chromium version is not distributed through a browser store yet and must be installed manually.</sub>
+<sub>The Firefox release is currently under AMO review. The Chromium version is not distributed through a browser store yet and must be installed manually.</sub>
 
 Firefox and Chromium generate different OAuth redirect URIs. Always copy the
 URI displayed by the installed browser's extension popup.
@@ -93,14 +93,27 @@ npm run verify
 
 ### Firefox
 
-Install the signed release from
+The signed release is currently under review on
 [Firefox Add-ons](https://addons.mozilla.org/ko/firefox/addon/code-server-discord-presence/).
 
-For development, open `about:debugging#/runtime/this-firefox`, select
-**Load Temporary Add-on**, and open `dist/firefox/manifest.json`.
+Until the review is complete, the unsigned XPI can be installed persistently
+with Firefox ESR, Developer Edition, or Nightly:
 
-Release and Beta Firefox require an XPI signed by Mozilla for permanent
+1. Open `about:config`.
+2. Set `xpinstall.signatures.required` to `false`.
+3. Open `about:addons`, select the gear menu, then **Install Add-on From File**.
+4. Choose `dist/packages/code-server-discord-presence-firefox-0.1.1.xpi`.
+
+This option is intended for development and weakens signature enforcement for
+that browser profile. Use a separate profile and install only packages you
+trust. Standard and Beta Firefox require an XPI signed by Mozilla for permanent
 installation.
+
+For temporary testing in any desktop Firefox, open
+`about:debugging#/runtime/this-firefox`, select **Load Temporary Add-on**, and
+open `dist/firefox/manifest.json`. The temporary installation is removed when
+Firefox restarts. See the
+[Mozilla unsigned extension guidance](https://extensionworkshop.com/documentation/enterprise/enterprise-distribution/#signed-vs-unsigned-extensions).
 
 ### Chromium
 
@@ -117,8 +130,8 @@ a directly installable CRX.
 ```text
 dist/firefox/
 dist/chromium/
-dist/packages/code-server-discord-presence-firefox-0.1.0.xpi
-dist/packages/code-server-discord-presence-chromium-0.1.0.zip
+dist/packages/code-server-discord-presence-firefox-0.1.1.xpi
+dist/packages/code-server-discord-presence-chromium-0.1.1.zip
 ```
 
 Individual builds are also available:

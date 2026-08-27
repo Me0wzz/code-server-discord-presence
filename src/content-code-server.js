@@ -1,7 +1,7 @@
 (function startCodeServerPresence() {
   "use strict";
 
-  const SCRIPT_VERSION = "0.1.0";
+  const SCRIPT_VERSION = "0.1.1";
   if (globalThis.__codeServerDiscordPresenceLoaded === SCRIPT_VERSION) return;
   globalThis.__codeServerDiscordPresenceLoaded = SCRIPT_VERSION;
 
