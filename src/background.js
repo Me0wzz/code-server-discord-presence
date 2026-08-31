@@ -176,6 +176,9 @@ function storedPresence(presence) {
     details: CodeServerPresence.cleanText(presence.details),
     state: CodeServerPresence.cleanText(presence.state),
     iconKey: CodeServerLanguageNames.isKnownIconKey(presence.iconKey) ? presence.iconKey : "text",
+    language: CodeServerLanguageNames.isKnownLanguageName(presence.language)
+      ? presence.language
+      : "",
     privacyMode: Boolean(presence.privacyMode),
     updatedAt: Number(presence.updatedAt || Date.now())
   };
@@ -203,6 +206,11 @@ function restorePresenceTracking(tracking) {
     details: CodeServerPresence.cleanText(source.details),
     state: CodeServerPresence.cleanText(source.state),
     iconKey: CodeServerLanguageNames.isKnownIconKey(source.iconKey) ? source.iconKey : "text",
+    language: CodeServerLanguageNames.isKnownLanguageName(source.language)
+      ? source.language
+      : (CodeServerLanguageNames.isKnownLanguageName(source.safeContext?.language)
+        ? source.safeContext.language
+        : ""),
     privacyMode: Boolean(source.privacyMode),
     safeContext: source.safeContext || null,
     tabId,
@@ -216,6 +224,7 @@ function restorePresenceTracking(tracking) {
     details: presence.details,
     state: presence.state,
     iconKey: presence.iconKey,
+    language: presence.language,
     privacyMode: presence.privacyMode
   });
   return Object.freeze(presence);
@@ -406,6 +415,10 @@ async function writePresence(presence, force = false) {
   if (!settings.enabled || !authTokens?.accessToken || !validClientId(settings.clientId)) return;
   const now = Date.now();
   if (!force && presence.key === lastPresenceKey && now - lastPresenceSentAt < MIN_REPEAT_INTERVAL_MS) return;
+  if (!primaryHeadlessToken) {
+    sessionStartedAt = now;
+    await saveHeadlessSession();
+  }
   const program = resolvedProgram();
   let body = CodeServerPresence.makeHeadlessBody(
     presence, settings.clientId, sessionStartedAt, primaryHeadlessToken, program
@@ -422,6 +435,7 @@ async function writePresence(presence, force = false) {
     }
     primaryHeadlessToken = "";
     knownHeadlessTokens = [];
+    sessionStartedAt = now;
     await saveHeadlessSession();
     body = CodeServerPresence.makeHeadlessBody(presence, settings.clientId, sessionStartedAt, "", program);
     result = await discordRequest("/users/@me/headless-sessions", {
@@ -608,16 +622,23 @@ async function handleEditorPresence(message, sender) {
     throw new Error("Blocked an unsafe Privacy Mode presence before it reached Discord.");
   }
   const iconKey = CodeServerLanguageNames.isKnownIconKey(presence.iconKey) ? presence.iconKey : "text";
+  const language = CodeServerLanguageNames.isKnownLanguageName(presence.language)
+    ? presence.language
+    : (CodeServerLanguageNames.isKnownLanguageName(presence.safeContext?.language)
+      ? presence.safeContext.language
+      : "");
   currentPresence = Object.freeze({
     details: CodeServerPresence.cleanText(presence.details),
     state: CodeServerPresence.cleanText(presence.state),
     iconKey,
+    language,
     privacyMode: Boolean(presence.privacyMode),
     safeContext: presence.privacyMode ? presence.safeContext : null,
     key: JSON.stringify({
       details: CodeServerPresence.cleanText(presence.details),
       state: CodeServerPresence.cleanText(presence.state),
       iconKey,
+      language,
       privacyMode: Boolean(presence.privacyMode)
     }),
     tabId: tab.id,

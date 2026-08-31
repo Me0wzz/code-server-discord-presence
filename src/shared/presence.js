@@ -138,7 +138,7 @@
       defaultDetails = hasEditor ? `Editing${language ? ` ${language}` : ""} file` : "Browsing code-server";
       defaultState = "In Workspace";
     } else if (hasEditor) {
-      defaultDetails = showFileName ? `Editing ${fileName}` : "Editing file";
+      defaultDetails = showFileName ? `Editing ${fileName}` : `Editing${language ? ` ${language}` : ""} file`;
       defaultState = showWorkspace && workspaceName ? `In ${workspaceName}` : "In Workspace";
     } else {
       defaultDetails = "Browsing project";
@@ -157,6 +157,7 @@
     };
     return {
       details: renderTemplate(options.detailsTemplate, variables, defaultDetails),
+      language,
       state: renderTemplate(options.stateTemplate, variables, defaultState),
       iconKey: hasEditor ? languageNames.iconKeyForFile(fileName) : "idle-vscode",
       safeContext: privacyMode ? {
@@ -180,6 +181,7 @@
     result.key = JSON.stringify(result);
     Object.defineProperties(result, {
       iconKey: { value: presentation.iconKey, enumerable: false },
+      language: { value: presentation.language, enumerable: false },
       safeContext: { value: presentation.safeContext, enumerable: false }
     });
     return Object.freeze(result);
@@ -190,6 +192,7 @@
       details: cleanText(presence.details),
       state: cleanText(presence.state),
       iconKey: languageNames.isKnownIconKey(presence.iconKey) ? presence.iconKey : "text",
+      language: languageNames.isKnownLanguageName(presence.language) ? presence.language : "",
       privacyMode: Boolean(presence.privacyMode),
       key: cleanText(presence.key, 512)
     };
@@ -221,6 +224,7 @@
       : "Browsing code-server";
     return {
       details: renderTemplate(options.detailsTemplate, variables, defaultDetails),
+      language,
       state: renderTemplate(options.stateTemplate, variables, "In Workspace"),
       iconKey: hasEditor ? languageNames.iconKeyForLanguage(language) : "idle-vscode"
     };
@@ -230,8 +234,15 @@
     if (!presence || presence.privacyMode !== true || !presence.safeContext) return false;
     const expected = privacyPresentationFromSafeContext(presence.safeContext, options);
     return presence.details === expected.details &&
+      languageForPresence(presence) === expected.language &&
       presence.state === expected.state &&
       presence.iconKey === expected.iconKey;
+  }
+
+  function languageForPresence(presence) {
+    if (languageNames.isKnownLanguageName(presence?.language)) return presence.language;
+    const safeLanguage = presence?.safeContext?.language;
+    return languageNames.isKnownLanguageName(safeLanguage) ? safeLanguage : "";
   }
 
   function iconKeyForPresence(presence) {
@@ -277,7 +288,7 @@
       state: cleanText(presence.state),
       assets: {
         large_image: vscordIconUrl(iconKeyForPresence(presence)),
-        large_text: cleanText(presence.details),
+        large_text: languageForPresence(presence) || "Code",
         small_image: resolvedProgram.iconUrl || vscordIconUrl(resolvedProgram.iconKey),
         small_text: resolvedProgram.name
       },

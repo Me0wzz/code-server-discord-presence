@@ -7,6 +7,8 @@ const presenceApi = require("../src/shared/presence.js");
 const sensitiveCases = [
   ["secret-customer-list.py", "Editing Python file", "python"],
   ["internal-api-key-rotation.ts", "Editing TypeScript file", "ts"],
+  ["private-engine.cpp", "Editing C++ file", "cpp"],
+  ["private-app.cs", "Editing C# file", "csharp"],
   ["company-acquisition-plan.md", "Editing Markdown file", "markdown"],
   ["passwords.txt", "Editing Plain Text file", "text"],
   ["prod-database-credentials.json", "Editing JSON file", "json"]
@@ -106,6 +108,7 @@ test("headless activity uses a pinned VSCord icon and elapsed timestamp", () => 
   assert.equal(body.activities[0].name, "code-server");
   assert.equal(body.activities[0].type, 0);
   assert.equal(body.activities[0].timestamps.start, "1700000000123");
+  assert.equal(body.activities[0].assets.large_text, "Python");
   assert.equal(
     body.activities[0].assets.large_image,
     "https://raw.githubusercontent.com/LeonardSSH/vscord/e111b4329adf9182abc664aef79b5f594d285735/assets/icons/python.png"
@@ -126,4 +129,36 @@ test("privacy guard accepts generated data and rejects a raw filename or workspa
     state: "In secret-company-project",
     privacyMode: true
   }), false);
+});
+
+
+test("hiding filenames keeps the language in the activity details", () => {
+  const cases = [
+    ["main.cpp", "Editing C++ file"],
+    ["Program.cs", "Editing C# file"],
+    ["app.js", "Editing JavaScript file"]
+  ];
+  for (const [fileName, expected] of cases) {
+    const result = presenceApi.buildPresence(
+      { fileName, workspaceName: "private-project", hasEditor: true },
+      { privacyMode: false, showFileName: false }
+    );
+    assert.equal(result.details, expected);
+  }
+});
+
+test("language icon hover text stays a language name with every text setting", () => {
+  const cases = [
+    ["main.cpp", { privacyMode: false, detailsTemplate: "Working privately" }, "C++"],
+    ["Program.cs", { privacyMode: true, detailsTemplate: "Editing {language} file" }, "C#"],
+    ["app.js", { privacyMode: false, showFileName: false, detailsTemplate: "Coding" }, "JavaScript"]
+  ];
+  for (const [fileName, options, expected] of cases) {
+    const activity = presenceApi.makeActivity(
+      presenceApi.buildPresence({ fileName, hasEditor: true }, options),
+      "123456789012345678",
+      1700000000000
+    );
+    assert.equal(activity.assets.large_text, expected);
+  }
 });

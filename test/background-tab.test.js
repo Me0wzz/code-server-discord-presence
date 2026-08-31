@@ -107,6 +107,8 @@ function lifecycleHarness({ initialStorage, tabExists = true, deleteSucceeds = t
     windowRemoved: listenerEvent()
   };
   const deletedTokens = [];
+  const createdActivities = [];
+  let messageListener = null;
   let normalWindows = [{ id: 1 }];
   const browser = {
     storage: {
@@ -150,7 +152,9 @@ function lifecycleHarness({ initialStorage, tabExists = true, deleteSucceeds = t
   };
   const context = vm.createContext({
     browser,
-    CodeServerBrowserCompat: { addMessageListener() {} },
+    CodeServerBrowserCompat: {
+      addMessageListener(value) { messageListener = value; }
+    },
     CodeServerDiscordOAuth: oauthApi,
     CodeServerLanguageNames: languageApi,
     CodeServerPresence: presenceApi,
@@ -159,6 +163,11 @@ function lifecycleHarness({ initialStorage, tabExists = true, deleteSucceeds = t
     setTimeout: () => 1,
     clearTimeout() {},
     fetch: async (url, options) => {
+      if (String(url).endsWith("/headless-sessions")) {
+        const request = JSON.parse(options.body);
+        createdActivities.push(request.activities[0]);
+        return { status: 200, ok: true, json: async () => ({ token: "new-headless-token" }) };
+      }
       if (String(url).endsWith("/users/@me/headless-sessions/delete")) {
         deletedTokens.push(JSON.parse(options.body).token);
         if (!deleteSucceeds) throw new Error("Browser stopped before deletion completed");
@@ -172,7 +181,9 @@ function lifecycleHarness({ initialStorage, tabExists = true, deleteSucceeds = t
     storage,
     events,
     deletedTokens,
+    createdActivities,
     releaseStorage,
+    sendMessage(message, sender) { return messageListener(message, sender); },
     setNormalWindows(value) { normalWindows = value; }
   };
 }
@@ -226,4 +237,38 @@ test("closing the final normal browser window requests Presence deletion", async
   harness.events.windowRemoved.fire(1);
 
   await waitFor(() => harness.deletedTokens.includes("headless-token"));
+});
+
+
+test("refreshing an active session preserves its elapsed start", async () => {
+  const harness = lifecycleHarness();
+  harness.events.alarm.fire({ name: "refresh-headless-session" });
+  harness.releaseStorage();
+
+  await waitFor(() => harness.createdActivities.length === 1);
+  assert.equal(harness.createdActivities[0].timestamps.start, "1700000000000");
+});
+
+test("creating a new session after Presence cleanup resets elapsed time", async () => {
+  const harness = lifecycleHarness();
+  harness.events.removed.fire(7);
+  harness.releaseStorage();
+  await waitFor(() => harness.deletedTokens.includes("headless-token"));
+  await waitFor(() => harness.storage.headlessSession.pendingDeletionTokens.length === 0);
+
+  const restartedAt = Date.now();
+  const presence = presenceApi.buildPresence(
+    { fileName: "main.py", workspaceName: "project", hasEditor: true },
+    { privacyMode: true }
+  );
+  await harness.sendMessage(
+    presenceApi.makeContentMessage(presence, restartedAt),
+    { tab: { id: 8, url: "https://code.example.test/editor" } }
+  );
+  await waitFor(() => harness.createdActivities.length === 1);
+
+  const elapsedStart = Number(harness.createdActivities[0].timestamps.start);
+  assert.ok(elapsedStart >= restartedAt);
+  assert.notEqual(elapsedStart, 1700000000000);
+  assert.equal(harness.storage.headlessSession.sessionStartedAt, elapsedStart);
 });
